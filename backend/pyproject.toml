@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tuvi-battu-backend"
+version = "0.1.0"
+description = "FastAPI backend for TuVi/BatTu GraphRAG"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "python-dotenv",
+  "neo4j",
+  "pydantic",
+  "pytest",
+  "requests",
+  "supabase",
+  "pymupdf"
+]

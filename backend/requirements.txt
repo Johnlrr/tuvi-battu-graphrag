@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+neo4j
+pydantic
+pytest
+requests
+supabase
+pymupdf
+psycopg[binary]
