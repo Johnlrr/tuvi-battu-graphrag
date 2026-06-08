@@ -1,16 +1,5 @@
 -- Supabase seed data for local development and test purposes.
--- Replace values with valid Supabase auth user IDs and secret keys if needed.
-
-INSERT INTO auth.users (id, email, email_confirmed_at, app_metadata, user_metadata, created_at)
-VALUES (
-  '00000000-0000-0000-0000-000000000001',
-  'test@example.com',
-  NOW(),
-  '{}'::jsonb,
-  '{}'::jsonb,
-  NOW()
-)
-ON CONFLICT (id) DO NOTHING;
+-- Note: auth.users is managed by Supabase Auth, so we create profile + la_so + chat_sessions with placeholder IDs.
 
 INSERT INTO profiles (id, display_name, avatar_url)
 VALUES (

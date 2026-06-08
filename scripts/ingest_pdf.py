@@ -66,8 +66,8 @@ def ingest_pdf_file(pdf_path: Path, domain: str, output_dir: Path) -> list[dict]
             continue
         paragraphs = split_into_paragraphs(text)
         for paragraph_index, paragraph in enumerate(paragraphs):
-            for chunk_index, chunk_text in enumerate(chunk_text(paragraph, max_words=250), start=1):
-                data = build_chunk_metadata(source_name, domain, page_index, f"{paragraph_index + 1}.{chunk_index}", chunk_text)
+            for chunk_index, chunk in enumerate(chunk_text(paragraph, max_words=250), start=1):
+                data = build_chunk_metadata(source_name, domain, page_index, f"{paragraph_index + 1}.{chunk_index}", chunk)
                 chunks.append(data)
     if chunks:
         output_path = output_dir / f"{source_name}.json"
