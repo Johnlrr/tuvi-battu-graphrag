@@ -1,27 +1,23 @@
 # System Specification: Hệ Thống Hỏi Đáp Tử Vi / Bát Tự với Hybrid GraphRAG
 
-**Version:** 5.0  
-**Date:** 2026-06-04  
-**Team size:** 4 people  
+**Version:** 6.0
+**Date:** 2026-06-10
+**Team size:** 4 người
 **Budget:** $0 (MVP / free-tier first)
 
 ***
 
-## Changelog v5.0
+## Changelog v6.0
 
-- Nâng đặc tả từ v4.1 lên v5.0 như một tài liệu chính thức, hợp nhất toàn bộ các quyết định kiến trúc và điều chỉnh đã thống nhất trong quá trình review.
-- Làm rõ đây là dự án **team 4 người**, không phải solo project.
-- Chuẩn hóa lại kiến trúc retrieval thành **2 nhánh song song**: graph retrieval và hybrid retrieval (dense + sparse/BM25), sau đó hợp nhất và rerank trước khi generation.
-- Bổ sung **query rewriting nhẹ** ở đầu pipeline bằng Gemini Flash-Lite để tăng recall nhưng vẫn giữ latency hợp lý cho MVP.
-- Xác định **document grading bằng LLM chưa bắt buộc ở MVP**, có thể defer sang giai đoạn hậu MVP nếu reranker chưa đủ.
-- Bổ sung **cross-encoder reranker** như thành phần chuẩn trong retrieval stage.
-- Làm rõ chiến lược **soft separation theo domain** giữa Tử Vi và Bát Tự trong cùng một Neo4j graph, không tách thành hai database riêng.
-- Bổ sung thiết kế chunking phù hợp hơn cho tài liệu tử vi/bát tự: **structure-first recursive chunking + parent-child retrieval strategy**.
-- Bổ sung ước lượng sức chứa Neo4j AuraDB Free và xác nhận phạm vi MVP hiện tại vẫn nằm trong giới hạn free-tier.
-- Làm rõ business rule: **mỗi chart chỉ có một chat, và mỗi chat chỉ gắn với đúng một chart**.
-- Bổ sung ràng buộc dữ liệu để enforce one-chart-one-chat ở cấp database.
-- Tối ưu lại roadmap từ ~13 tuần xuống **7–8 tuần** theo hướng song song hóa công việc cho team 4 người.
-- Bổ sung thêm chi tiết về latency trade-off, cache strategy, context windowing, failure handling, và retrieval best practices cho production-oriented MVP.
+- Giữ nguyên toàn bộ nội dung v5.0.
+- Bổ sung **Section 29: Ablation Study Framework** — thiết kế hệ thống thử nghiệm đa phương án toàn diện, bao gồm toggle kiến trúc và toggle cho từng chiều kỹ thuật: retrieval path, chunking strategy, fusion method, reranking, query rewriting, embedding model, generation model, entity extraction, và context assembly.
+- Bổ sung **`ExperimentConfig`** — cấu trúc dữ liệu chuẩn để định nghĩa, lưu trữ, và tái hiện một experiment.
+- Bổ sung **`AblationRunner`** — interface chạy ablation tự động trên golden dataset.
+- Bổ sung bảng **pre-defined experiment matrix** gồm 20+ experiment được thiết kế có hệ thống.
+- Bổ sung hướng dẫn **phân tích kết quả ablation** và cách ánh xạ từ metric sang quyết định kiến trúc.
+- Cập nhật `RAGState` để mang theo `experiment_config` xuyên suốt pipeline.
+- Cập nhật Section 19 (Evaluation plan) để tích hợp ablation với evaluation workflow.
+- Cập nhật Section 27 (Official implementation decisions) để thêm quyết định liên quan đến ablation.
 
 ***
 
@@ -34,6 +30,8 @@ MVP tập trung vào 3 khả năng chính:
 1. Sinh chart từ thông tin ngày/giờ sinh, giới tính, và tên gọi.
 2. Hiển thị chart trực quan trong giao diện web.
 3. Hỏi đáp theo đúng chart hiện tại bằng hệ thống **Hybrid GraphRAG**, có dẫn nguồn và có kiểm soát hallucination.
+
+Ngoài ra, dự án này có một mục tiêu thứ hai song song: **thử nghiệm có hệ thống nhiều phương án kỹ thuật** để xác định cấu hình tối ưu cho domain tử vi/bát tự thông qua ablation study kỹ lưỡng.
 
 ***
 
@@ -49,6 +47,7 @@ MVP tập trung vào 3 khả năng chính:
 - Retrieval dựa trên chart context + knowledge graph + vector + sparse retrieval.
 - Trích dẫn nguồn theo chunk provenance.
 - Theo dõi logs / traces bằng Langfuse.
+- **Ablation study framework** cho phép chạy và so sánh nhiều cấu hình pipeline.
 
 ### 2.2 Out-of-scope
 
@@ -81,7 +80,7 @@ github.com/alvamind/bazi-calculator-by-alvamind | MIT | npm package
 
 Bát Tự được tính trong **Next.js API Route** `/api/battu/calculate` để giữ logic tính toán ở server-side và không phụ thuộc FastAPI.
 
-#### Lý do giữ cách này trong v5
+#### Lý do giữ cách này trong v6
 
 - Khớp với kiến trúc frontend-centric cho chart generation.
 - Tránh subprocess giữa Python và Node.
@@ -196,6 +195,7 @@ Lưu ý thực dụng:
 - Retrieval phải vừa hiểu quan hệ khái niệm (graph) vừa bắt đúng thuật ngữ chuyên ngành (sparse/BM25) vừa giữ semantic recall (dense embeddings).
 - MVP ưu tiên độ đúng và khả năng kiểm tra nguồn hơn là latency tối thiểu.
 - Tử Vi và Bát Tự dùng chung hạ tầng graph/vector, nhưng có **phân tách logic theo domain metadata**.
+- **Mọi thành phần có thể thay thế được trong pipeline đều phải có toggle tương ứng** để phục vụ ablation study.
 
 ***
 
@@ -221,24 +221,29 @@ User nhập ngày/giờ sinh
                         │
                         ▼
                 LangGraph Hybrid GraphRAG
-                [query rewrite nhẹ]
+                [ExperimentConfig được load tại đây]
+                [query rewrite nhẹ – nếu bật]
                         │
                 ┌───────┴────────────────────────────┐
                 │                                    │
       [graph retrieval path]              [hybrid retrieval path]
       Neo4j Cypher                        dense + BM25/fulltext
+      (nếu bật)                           (mỗi path có toggle riêng)
                 │                                    │
                 └──────────────┬─────────────────────┘
                                │
-                         [RRF fusion]
+                    [fusion method – RRF hoặc khác]
                                │
-                         [cross-encoder rerank]
+                    [reranker – nếu bật]
                                │
-                         [context assemble]
+                    [document grading – nếu bật]
                                │
-                         [Gemini Flash generate]
+                    [context assembly strategy]
                                │
-                      Response + citations + traces
+                    [generation model được chọn]
+                               │
+                  Response + citations + traces
+                  + experiment_id được log vào Langfuse
 ```
 
 ***
@@ -253,13 +258,15 @@ Giữ LangGraph làm orchestration layer vì hệ thống cần:
 - Branching/parallel retrieval.
 - State theo `chart_id`.
 - Dễ thêm cache, reranking, observability, fallback logic.
+- **Dễ swap node theo `ExperimentConfig` mà không cần sửa graph topology.**
 
-### 7.2 State đề xuất
+### 7.2 State đề xuất (cập nhật v6)
 
 ```python
-from typing import TypedDict, Dict, Any, List
+from typing import TypedDict, Dict, Any, List, Optional
 
 class RAGState(TypedDict, total=False):
+    # Core
     query: str
     rewritten_query: str
     query_complexity: str
@@ -268,56 +275,68 @@ class RAGState(TypedDict, total=False):
     chart_data: Dict[str, Any]
     user_id: str
     domain_filter: str
+
+    # Retrieval
     entities: List[str]
     graph_candidates: List[Dict[str, Any]]
     dense_candidates: List[Dict[str, Any]]
     sparse_candidates: List[Dict[str, Any]]
     fused_candidates: List[Dict[str, Any]]
     reranked_candidates: List[Dict[str, Any]]
+    graded_candidates: List[Dict[str, Any]]   # dùng khi document grading bật
     final_context: str
     retrieval_mode: str
+
+    # Output
     answer: str
     sources: List[Dict[str, Any]]
     cache_key: str
+
+    # Ablation (v6 mới)
+    experiment_config: "ExperimentConfig"     # config của lần chạy này
+    experiment_id: str                        # UUID của experiment run
+    retrieval_trace: Dict[str, Any]           # chi tiết từng path để phân tích
 ```
 
 ### 7.3 Node graph đề xuất
 
 1. Load chart context.
-2. Normalize query.
-3. Query complexity classify.
-4. Query rewrite bằng Flash-Lite.
-5. Extract entities.
-6. Chạy song song:
-   - Graph retrieval path.
-   - Dense retrieval path.
-   - Sparse/BM25 retrieval path.
-7. RRF fusion.
-8. Cross-encoder rerank.
-9. Context assembly + token budget trim.
-10. Final generation bằng Gemini Flash.
-11. Citation map + trace log.
+2. Load `ExperimentConfig` và gắn vào state.
+3. Normalize query.
+4. Query complexity classify.
+5. Query rewrite bằng Flash-Lite *(nếu `config.query_rewrite_enabled`)*
+6. Extract entities *(nếu `config.graph_retrieval_enabled`)*
+7. Chạy song song theo config:
+   - Graph retrieval path *(nếu `config.graph_retrieval_enabled`)*
+   - Dense retrieval path *(nếu `config.dense_retrieval_enabled`)*
+   - Sparse/BM25 retrieval path *(nếu `config.sparse_retrieval_enabled`)*
+8. Fusion bằng method được chỉ định trong `config.fusion_method`.
+9. Rerank *(nếu `config.reranker_enabled`)* với model từ `config.reranker_model`.
+10. Document grading *(nếu `config.document_grading_enabled`)*
+11. Context assembly theo `config.context_assembly_strategy`.
+12. Final generation bằng model từ `config.generation_model`.
+13. Citation map + trace log + ghi `experiment_id` vào Langfuse.
 
-### 7.4 Những gì **không bắt buộc** trong MVP
+### 7.4 Những gì **không bắt buộc** trong MVP production
 
-- LLM-based document grading sau retrieval.
+- LLM-based document grading sau retrieval *(nhưng bắt buộc có toggle để chạy ablation)*.
 - Query decomposition phức tạp theo nhiều sub-question.
 - Agentic planner nhiều bước trước retrieval.
 
-Các thành phần này có thể thêm sau nếu evaluation cho thấy recall hoặc faithfulness chưa đủ.
-
 ***
 
-## 8. Retrieval design (official v5)
+## 8. Retrieval design (official v6)
 
 ### 8.1 Nguyên tắc chung
 
-Retrieval stage trong v5 **không còn là graph trước rồi vector sau** như cách hiểu tuần tự đơn giản. Thay vào đó, retrieval chính thức của hệ thống gồm **2 nhánh lớn chạy song song**:
+Retrieval stage trong v6 **không còn là graph trước rồi vector sau** như cách hiểu tuần tự đơn giản. Thay vào đó, retrieval chính thức của hệ thống gồm **2 nhánh lớn chạy song song**:
 
 1. **Graph retrieval path** – dùng entity extraction + Cypher để đi theo quan hệ trong knowledge graph.
 2. **Hybrid retrieval path** – gồm dense retrieval + sparse/BM25 retrieval chạy song song, sau đó fuse lại.
 
 Cuối cùng, toàn bộ ứng viên từ cả 2 nhánh được trộn, rerank, rồi đưa vào generation.
+
+**Bổ sung v6:** Mỗi path và mỗi method đều có toggle riêng trong `ExperimentConfig`. Cấu hình production mặc định bật tất cả, còn ablation có thể tắt từng phần để đo đóng góp riêng lẻ.
 
 ### 8.2 Graph retrieval path
 
@@ -334,6 +353,8 @@ Graph retrieval path gồm:
 - Query Neo4j bằng Cypher với domain filter và chart-aware constraints.
 - Trả về node/edge/chunk references liên quan.
 
+**Ablation dimension:** `graph_retrieval_enabled` (true/false) + `graph_hop_depth` (1 hoặc 2 hop).
+
 ### 8.3 Hybrid retrieval path
 
 Hybrid retrieval path gồm 2 retrieval method chạy song song:
@@ -343,6 +364,8 @@ Hybrid retrieval path gồm 2 retrieval method chạy song song:
 
 Dense retrieval mạnh khi người dùng hỏi diễn đạt tự nhiên.
 Sparse retrieval mạnh khi câu hỏi chứa thuật ngữ tử vi/bát tự cụ thể, tên sao, tên cung, hoặc cụm khái niệm chuyên ngành.
+
+**Ablation dimension:** `dense_retrieval_enabled` và `sparse_retrieval_enabled` là hai toggle độc lập.
 
 ### 8.4 Fusion và reranking
 
@@ -354,9 +377,11 @@ Sau khi có kết quả từ 3 nguồn:
 
 Hệ thống thực hiện:
 
-1. **RRF (Reciprocal Rank Fusion)** để hợp nhất ranking ban đầu.
-2. **Cross-encoder reranker** để xếp hạng lại top candidates.
+1. **Fusion** theo `config.fusion_method` — mặc định là RRF, có thể thay bằng score normalization + weighted sum.
+2. **Cross-encoder reranker** để xếp hạng lại top candidates — nếu `config.reranker_enabled`.
 3. Cắt top-k theo token budget để đưa vào prompt generation.
+
+**Ablation dimension:** `fusion_method` (`rrf` / `weighted_sum` / `graph_first`) + `reranker_enabled` + `reranker_model`.
 
 ### 8.5 Vì sao thiết kế này là phù hợp nhất cho MVP
 
@@ -370,7 +395,7 @@ Hệ thống thực hiện:
 
 - Query rewrite: **bật mặc định**, dùng Flash-Lite, mục tiêu thêm latency nhỏ nhưng tăng recall rõ rệt.
 - Reranker: **bật mặc định**.
-- Document grading bằng LLM: **tắt mặc định ở MVP**.
+- Document grading bằng LLM: **tắt mặc định ở MVP production**, **bật được để chạy ablation**.
 - Cache retrieval/generation theo `chart_id + normalized_query` cho các câu hỏi lặp lại.
 
 ***
@@ -399,6 +424,8 @@ Ví dụ:
 - Chỉ rewrite để làm rõ entity / house / term / intent cho retrieval.
 - Không dùng query rewriting để tạo câu trả lời cuối.
 
+**Ablation dimension:** `query_rewrite_enabled` (true/false) + `query_rewrite_model` (`flash_lite` / `flash`).
+
 ### 9.3 Guardrails
 
 - Không chèn thêm claim không tồn tại trong chart.
@@ -411,13 +438,13 @@ Ví dụ:
 
 ### 10.1 MVP decision
 
-Ở v5, hệ thống **bắt buộc có reranker**, nhưng **chưa bắt buộc có LLM document grading**.
+Ở v6, hệ thống **bắt buộc có reranker trong production**, nhưng **chưa bắt buộc có LLM document grading trong production**. Tuy nhiên, **cả hai phải có toggle để chạy ablation study**.
 
 ### 10.2 Lý do
 
 - Reranker tăng precision tốt trong khi latency thấp hơn gọi thêm LLM grading cho mỗi batch retrieval.
 - Với quy mô corpus MVP, reranker là điểm cân bằng tốt nhất giữa chất lượng và tốc độ.
-- Nếu evaluation sau MVP cho thấy còn nhiều chunk nhiễu, có thể thêm document grading như một node tùy chọn chỉ kích hoạt cho query khó.
+- Ablation study sẽ cho biết liệu document grading có đáng thêm vào production hay không, dựa trên metric thực tế trên golden dataset của dự án này.
 
 ### 10.3 Cơ chế triển khai
 
@@ -426,13 +453,17 @@ Ví dụ:
 - Loại bỏ chunk có score thấp dưới ngưỡng.
 - Chỉ giữ số chunk cần thiết theo token budget.
 
+**Ablation dimension:** `reranker_enabled` + `reranker_model` + `reranker_threshold` + `document_grading_enabled` + `document_grading_model`.
+
 ***
 
 ## 11. Embedding, sparse retrieval, and indexing
 
 ### 11.1 Embedding model
 
-Dùng `gemini-embedding-001` cho cả ingestion và runtime retrieval.
+Dùng `gemini-embedding-001` cho cả ingestion và runtime retrieval làm mặc định.
+
+**Ablation dimension:** `embedding_model` — có thể thử `gemini-embedding-001` vs các model nhỏ hơn để đo quality/cost trade-off.
 
 ### 11.2 Sparse retrieval
 
@@ -551,10 +582,22 @@ CREATE TABLE source_chunks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Bảng mới trong v6: lưu experiment run results
+CREATE TABLE experiment_runs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  experiment_id TEXT NOT NULL,         -- tên experiment, ví dụ "EXP-001"
+  config JSONB NOT NULL,               -- ExperimentConfig được serialize
+  dataset_version TEXT NOT NULL,       -- phiên bản golden dataset dùng
+  metrics JSONB NOT NULL DEFAULT '{}', -- kết quả metric tổng hợp
+  run_at TIMESTAMPTZ DEFAULT NOW(),
+  notes TEXT
+);
+
 CREATE INDEX idx_la_so_user_id ON la_so(user_id);
 CREATE INDEX idx_chat_sessions_user_id ON chat_sessions(user_id);
 CREATE INDEX idx_source_chunks_hash ON source_chunks(chunk_hash);
 CREATE INDEX idx_source_chunks_domain ON source_chunks(domain);
+CREATE INDEX idx_experiment_runs_id ON experiment_runs(experiment_id);
 ```
 
 ### 13.3 RLS policies
@@ -565,22 +608,16 @@ ALTER TABLE la_so ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Profiles are self-owned"
-ON profiles
-FOR ALL
-USING (auth.uid() = id)
-WITH CHECK (auth.uid() = id);
+ON profiles FOR ALL
+USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Charts are self-owned"
-ON la_so
-FOR ALL
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+ON la_so FOR ALL
+USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Chat sessions are self-owned"
-ON chat_sessions
-FOR ALL
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+ON chat_sessions FOR ALL
+USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
 
 ### 13.4 Context windowing policy
@@ -602,6 +639,8 @@ Nên bổ sung trigger auto-update `updated_at` cho `profiles`, `la_so`, và `ch
 ### 14.1 Mục tiêu
 
 Pipeline ingestion phải tạo được corpus sạch, có provenance, có graph entities, và có vector/fulltext index để phục vụ Hybrid GraphRAG.
+
+**Bổ sung v6:** Pipeline ingestion phải **hỗ trợ nhiều chunking strategy** để có thể ingest cùng một bộ sách dưới nhiều cấu hình khác nhau, phục vụ ablation study chunking.
 
 ### 14.2 Nguồn dữ liệu ưu tiên
 
@@ -626,20 +665,23 @@ Normalize text
 Structure parse
     - heading / section / paragraph / sentence
     ↓
-Chunking
-    - parent chunks
-    - child chunks
+Chunking  ← ABLATION POINT: chunking_strategy
+    - strategy A: structure-first recursive + parent-child (default)
+    - strategy B: fixed-size sliding window
+    - strategy C: sentence-based với dynamic merge
+    - strategy D: semantic chunking bằng embedding similarity
     ↓
 Metadata tagging
     - source, page, chapter, topic, language, domain
+    - chunk_strategy_id (để trace lại khi so sánh)
     ↓
-Entity extraction (Gemini Flash-Lite)
+Entity extraction  ← ABLATION POINT: entity_extraction_model
     ↓
 Canonicalization / dedup preparation
     ↓
 Build graph objects
     ↓
-Embed chunks (gemini-embedding-001)
+Embed chunks  ← ABLATION POINT: embedding_model
     ↓
 Create/update fulltext index entries
     ↓
@@ -653,32 +695,52 @@ Store in Neo4j + provenance in Supabase
 - **Entity extraction trước embedding** để graph-first modeling sạch hơn.
 - **Dedup logic** là bắt buộc ở bước graph write để tránh nổ số lượng node giống nhau.
 - **Incremental ingestion** phải được hỗ trợ dựa trên `chunk_hash`.
+- **Bổ sung v6:** `chunk_hash` phải bao gồm cả `chunking_strategy_id` để các strategy khác nhau không dedup lẫn nhau.
 
-### 14.5 Chunking strategy chính thức
+### 14.5 Chunking strategies (Ablation — v6)
 
-#### Recommended strategy
+Đây là một trong những dimension quan trọng nhất của ablation study trong dự án này. Tài liệu tử vi/bát tự có cấu trúc độc đáo — chia theo sao, cung, tổ hợp, luận giải — nên không có cơ sở chắc chắn trước rằng strategy nào tốt nhất. Cần đo.
 
-Dùng **structure-first recursive chunking + parent-child retrieval**.
-
-#### Quy tắc thực thi
+#### Strategy A — Structure-first recursive + parent-child (default v6)
 
 - Tách theo thứ tự ưu tiên: heading → section → paragraph → sentence.
 - **Parent chunk**: 400–512 tokens.
-- **Child chunk**: 120–180 tokens.
-- Overlap: 60–100 tokens cho parent chunk, overlap nhỏ cho child chunk nếu cần.
-- Nếu chunk < 100 tokens và không phải một đơn vị khái niệm độc lập, merge với chunk lân cận.
-- Không tách giữa một đoạn đang mô tả trọn một tổ hợp sao/cung/luận giải nếu còn nằm trong giới hạn chunk mục tiêu.
+- **Child chunk**: 120–180 tokens, overlap nhỏ.
+- Overlap parent: 60–100 tokens.
+- Không tách giữa một đơn vị khái niệm hoàn chỉnh.
+- Retrieve bằng child, trả context bằng parent.
 
-#### Retrieval behavior
+#### Strategy B — Fixed-size sliding window
 
-- Retrieve bằng child chunk để precision cao.
-- Trả context cho LLM bằng parent chunk để đủ ngữ nghĩa.
+- Chunk kích thước cố định: thử 3 sub-variant: 256 / 512 / 1024 tokens.
+- Overlap cố định: 10–15% kích thước chunk.
+- Không có cấu trúc parent-child.
+- Đơn giản nhất để implement, dùng làm baseline.
 
-#### Vì sao phù hợp cho domain này
+#### Strategy C — Sentence-based với dynamic merge
 
-- Tài liệu tử vi/bát tự thường chia theo mục khái niệm, sao, cung, tổ hợp, luận giải.
-- Nếu chunk theo fixed size thuần túy, rất dễ cắt ngang một đơn vị nghĩa hoàn chỉnh.
-- Parent-child giúp vừa bắt đúng đoạn nhỏ cần thiết vừa không mất ngữ cảnh giải thích dài.
+- Tách theo câu bằng regex hoặc rule đơn giản.
+- Gộp các câu liên tiếp cho đến khi đạt target token range (200–400 tokens).
+- Không gộp qua ranh giới heading/section.
+- Không có parent-child.
+
+#### Strategy D — Semantic chunking bằng embedding similarity
+
+- Tách theo câu trước.
+- Dùng embedding similarity để phát hiện điểm ngắt ngữ nghĩa: khi cosine similarity giữa câu liên tiếp giảm mạnh thì ngắt chunk mới.
+- Target chunk: 300–500 tokens.
+- Tốn Gemini Embedding quota hơn khi ingest; cần chạy trên Kaggle.
+
+#### So sánh strategies
+
+| Strategy | Tên | Tách theo | Parent-child | Ablation tag |
+|---|---|---|---|---|
+| A | Structure-first recursive | Cấu trúc tài liệu | Có | `chunk_structure_parent_child` |
+| B1 | Fixed-size 256 | Token count | Không | `chunk_fixed_256` |
+| B2 | Fixed-size 512 | Token count | Không | `chunk_fixed_512` |
+| B3 | Fixed-size 1024 | Token count | Không | `chunk_fixed_1024` |
+| C | Sentence-merge | Câu + dynamic merge | Không | `chunk_sentence_merge` |
+| D | Semantic | Embedding similarity | Không | `chunk_semantic` |
 
 ### 14.6 Workflow chi tiết
 
@@ -688,12 +750,12 @@ Dùng **structure-first recursive chunking + parent-child retrieval**.
 4. Nếu cần thì OCR.
 5. Normalize Unicode tiếng Việt và clean artifacts.
 6. Parse cấu trúc tài liệu.
-7. Tạo parent-child chunks.
-8. Gắn metadata và domain.
+7. Tạo chunks theo `chunking_strategy` được chỉ định.
+8. Gắn metadata và domain, bao gồm `chunk_strategy_id`.
 9. Trích entity + relation bằng Flash-Lite.
 10. Canonicalize / dedup trước khi ghi graph.
-11. Ghi node/edge/chunk vào Neo4j.
-12. Ghi provenance vào Supabase.
+11. Ghi node/edge/chunk vào Neo4j (namespace riêng theo strategy nếu cần).
+12. Ghi provenance vào Supabase với `chunk_strategy_id`.
 13. Tạo embeddings và fulltext index.
 14. Chạy sample QA review sau ingestion.
 
@@ -703,6 +765,7 @@ Dùng **structure-first recursive chunking + parent-child retrieval**.
 - `MERGE` node theo `canonical_name + domain + entity_type`.
 - Không tạo node mới nếu chỉ khác cách viết hoa, dấu cách, hoặc alias phổ biến.
 - Lưu alias ở metadata nếu cần.
+- **Bổ sung v6:** Node `Chunk` dùng `MERGE` theo `chunk_hash` (bao gồm strategy_id), nên nhiều strategy sẽ tạo ra các node chunk riêng biệt trong graph — không merge lẫn nhau.
 
 ***
 
@@ -749,9 +812,11 @@ Chỉ giữ các relation thực sự có giá trị retrieval. Không nên bơm
 Từ danh sách nguồn hiện tại:
 
 - Khoảng 12 đầu sách chính cho MVP early corpus.
-- Tổng chunk ước lượng khoảng **3,000–4,000 chunks** nếu chunk 400–512 tokens.
+- Tổng chunk ước lượng khoảng **3,000–4,000 chunks** nếu chunk 400–512 tokens (strategy A).
 - Với entity extraction mức vừa phải, tổng graph node có thể nằm khoảng **15,000–20,000 nodes**.
 - Tổng relations có thể nằm khoảng **45,000–60,000 relations**.
+
+**Bổ sung v6 — ablation overhead:** Nếu chạy ablation với 6 chunking strategy trên cùng 4 sách ban đầu, số chunk node có thể tăng lên ~6× so với một strategy. Tuy nhiên, các knowledge node (`Sao`, `Cung`, v.v.) vẫn được merge, nên tổng node sẽ không tăng 6×. Ước tính tổng node vẫn nằm dưới **80,000–100,000** — an toàn trong free tier.
 
 ### 16.2 Kết luận
 
@@ -760,13 +825,13 @@ Giới hạn Neo4j AuraDB Free hiện tại:
 - 200,000 nodes
 - 400,000 relationships
 
-=> Với phạm vi sách hiện tại, hệ thống **vẫn nằm an toàn trong free tier** cho MVP.
+=> Với phạm vi sách hiện tại và ablation overhead, hệ thống **vẫn nằm an toàn trong free tier** cho MVP.
 
 ### 16.3 Khi nào cần lo vượt giới hạn
 
 - Khi ingest hàng chục đến hàng trăm đầu sách mới.
+- Khi chạy ablation trên toàn bộ 12 sách với tất cả strategy song song.
 - Khi entity extraction quá granular và tạo quá nhiều node trùng lặp.
-- Khi graph modeling mở rộng quá nhiều relation không cần thiết.
 
 ### 16.4 Quy tắc kiểm soát tăng trưởng
 
@@ -774,6 +839,7 @@ Giới hạn Neo4j AuraDB Free hiện tại:
 - Theo dõi số node/relation sau mỗi batch ingestion.
 - Bắt buộc dedup trước graph write.
 - Chỉ mở rộng corpus sau khi evaluation chứng minh retrieval đã ổn.
+- **Bổ sung v6:** Khi chạy ablation chunking, chỉ ingest 1–2 sách đại diện để tránh vượt capacity.
 
 ***
 
@@ -795,18 +861,26 @@ def classify_query_complexity(query: str) -> str:
         return "high"
     return "low"
 
+def route_model(task_type: str, query_complexity: str, config: "ExperimentConfig") -> str:
+    # Trong ablation, config có thể override model mặc định
+    if config.generation_model_override:
+        if task_type == "generation":
+            return config.generation_model_override
+    if config.entity_extraction_model_override:
+        if task_type == "entity_extraction":
+            return config.entity_extraction_model_override
 
-def route_model(task_type, query_complexity):
+    # Default routing
     if task_type == "query_rewrite":
-        return "gemini-3.1-flash-lite-preview"
+        return "gemini-2.0-flash-lite"
     if task_type == "entity_extraction":
-        return "gemini-3.1-flash-lite-preview"
+        return "gemini-2.0-flash-lite"
     if task_type == "ingestion_annotation":
-        return "gemini-3.1-flash-lite-preview"
+        return "gemini-2.0-flash-lite"
     if task_type == "retrieval_summary":
-        return "gemini-3.1-flash-lite-preview"
+        return "gemini-2.0-flash-lite"
     if task_type == "simple_factual" and query_complexity == "low":
-        return "gemini-3.1-flash-lite-preview"
+        return "gemini-2.0-flash-lite"
     return "gemini-2.5-flash"
 ```
 
@@ -815,6 +889,7 @@ def route_model(task_type, query_complexity):
 - Cache key: `hash(chart_id + normalized_query + top_context_ids)` hoặc đơn giản hơn `hash(chart_id + normalized_query)` cho MVP.
 - Cache retrieval/result cho câu hỏi lặp lại.
 - Chỉ dùng cache nếu chart context không đổi.
+- **Bổ sung v6:** Trong ablation run, **không dùng cache** vì mỗi config cần được đo độc lập. `AblationRunner` tự động disable cache khi chạy.
 
 ***
 
@@ -831,6 +906,8 @@ Prompt generation phải:
 - Gắn citations theo chunk/source map.
 - Nếu thiếu bằng chứng, phải nói rõ là chưa đủ dữ liệu.
 
+**Ablation dimension:** `prompt_template` — có thể thử nhiều phiên bản prompt template để đo ảnh hưởng lên Faithfulness và Answer Relevancy độc lập với retrieval config.
+
 ### 18.2 Entity extraction prompt requirements
 
 Prompt extraction phải nêu rõ:
@@ -843,7 +920,7 @@ Prompt extraction phải nêu rõ:
 
 ***
 
-## 19. Evaluation plan
+## 19. Evaluation plan (cập nhật v6)
 
 ### 19.1 Mục tiêu đánh giá
 
@@ -854,6 +931,8 @@ Prompt extraction phải nêu rõ:
 - không hallucinate,
 - citation đúng,
 - và giữ latency chấp nhận được cho MVP.
+
+**Bổ sung v6:** Evaluation còn có mục tiêu so sánh có hệ thống giữa các cấu hình pipeline thông qua ablation study để xác định cấu hình tối ưu cho domain.
 
 ### 19.2 Golden dataset
 
@@ -872,6 +951,8 @@ Mỗi mẫu nên có:
 - `required_sources`
 - `gold_context`
 - `difficulty`
+
+Dataset được version hóa (ví dụ `golden_v1.jsonl`) để đảm bảo kết quả ablation có thể so sánh với nhau qua các lần chạy khác nhau.
 
 ### 19.3 Metrics
 
@@ -897,7 +978,9 @@ Mỗi mẫu nên có:
    - hallucination
    - source mismatch
    - weak multi-hop reasoning
-6. Tinh chỉnh chunking / prompt / retrieval theo loại lỗi.
+6. **Bổ sung v6:** Chạy `AblationRunner` để sweep qua các experiment trong experiment matrix.
+7. **Bổ sung v6:** So sánh metric giữa các experiment và ánh xạ sang quyết định kiến trúc.
+8. Tinh chỉnh chunking / prompt / retrieval theo loại lỗi và kết quả ablation.
 
 ### 19.5 Adversarial tests
 
@@ -918,7 +1001,7 @@ Hệ thống chấp nhận một mức tăng latency hợp lý để đổi lấ
 3. Rerank
 4. Generation
 
-Document grading bằng LLM chưa bật ở MVP vì chưa xứng đáng với latency cost.
+Document grading bằng LLM chưa bật ở MVP vì chưa xứng đáng với latency cost — nhưng ablation sẽ kiểm chứng điều này.
 
 ### 20.2 Caching
 
@@ -927,6 +1010,8 @@ Document grading bằng LLM chưa bật ở MVP vì chưa xứng đáng với la
 - normalized query rewrite,
 - retrieval result theo `chart_id`,
 - final answer nếu cùng query và cùng chart context.
+
+**Bổ sung v6:** Cache bị vô hiệu hóa tự động khi request mang `experiment_id`.
 
 ### 20.3 Frontend UX cho latency
 
@@ -950,6 +1035,8 @@ Document grading bằng LLM chưa bật ở MVP vì chưa xứng đáng với la
 | Dữ liệu graph bị duplicate | Tăng node/edge vô ích, retrieval nhiễu | Canonicalization + `MERGE` + chunk hash + alias control |
 | Chat history quá dài | Prompt phình to, tốn quota | Rolling window + summary field |
 | Team timeline bị trượt | Chậm demo / release | Giảm corpus MVP xuống 3–4 sách trọng tâm, chia sprint song song |
+| **Ablation tốn quá nhiều quota** | **Vượt Gemini free-tier RPD** | **Chạy ablation vào buổi tối/ngày khác, batch nhỏ, dùng Flash-Lite cho các node không cần thiết phải Flash** |
+| **Nhiều chunking strategy làm Neo4j gần đầy** | **Vượt free-tier node limit** | **Chỉ ingest 1–2 sách đại diện khi so sánh chunking, xóa chunk node của strategy cũ sau khi có kết quả** |
 
 ***
 
@@ -963,6 +1050,8 @@ MVP được coi là đạt nếu thỏa toàn bộ điều kiện sau:
 4. Hệ thống trả lời trong phạm vi chart hiện tại, có diễn giải, có nguồn trích dẫn.
 5. Retrieval hoạt động theo kiến trúc hybrid graph + dense + sparse.
 6. Evaluation đạt gần hoặc đạt các ngưỡng metric đã đặt ra.
+7. **Bổ sung v6:** Ít nhất 10 experiment từ ablation matrix đã được chạy và kết quả được ghi lại.
+8. **Bổ sung v6:** Cấu hình production cuối cùng được chọn dựa trên bằng chứng từ ablation, không phải giả định.
 
 ***
 
@@ -1001,8 +1090,8 @@ Hệ thống trả lời bằng Hybrid GraphRAG + citations
 | Gemini Flash | 1,500 RPD, 10 RPM | Final generation |
 | Gemini Flash-Lite | 1,500 RPD, 15 RPM | Rewrite, extraction, simple tasks |
 | Gemini Embedding | 10M TPM free | Ingestion + runtime embeddings |
-| Neo4j AuraDB | 200k nodes, 400k rel | 1 instance, đủ cho MVP hiện tại |
-| Supabase | 500MB DB, 50k MAU | Đủ cho MVP |
+| Neo4j AuraDB | 200k nodes, 400k rel | 1 instance, đủ cho MVP + ablation chunking vừa phải |
+| Supabase | 500MB DB, 50k MAU | Đủ cho MVP + experiment_runs table |
 | Vercel | Hobby | Frontend |
 | Render | 750h/month | FastAPI, có cold start |
 
@@ -1013,31 +1102,32 @@ Hệ thống trả lời bằng Hybrid GraphRAG + citations
 ### 25.1 Team split suggestion
 
 - **Dev A**: FastAPI + LangGraph + Neo4j
-- **Dev B**: Ingestion pipeline + evaluation dataset
+- **Dev B**: Ingestion pipeline + evaluation dataset + ablation runner
 - **Dev C**: Next.js UI + chart visualizer
 - **Dev D**: Supabase auth/data + integration + QA/observability
 
 ### 25.2 Roadmap
 
 | Week | Backend / Data | Frontend / Product |
-|------|----------------|--------------------|
-| W1 | Supabase schema + RLS + FastAPI skeleton | Next.js auth skeleton + routing |
-| W2 | Tử Vi engine verify + unit tests | Bát Tự API route + chart page shell |
-| W3 | Ingestion pipeline v1 + 1–2 sách đầu tiên | D3/SVG visualizer v1 + chat UI |
-| W4 | Neo4j graph + vector + fulltext indexing | Dashboard + chart detail integration |
-| W5 | LangGraph retrieval pipeline + query rewrite + rerank | Citation UI + loading/error states |
-| W6 | Evaluation v1 + tuning retrieval/chunking | End-to-end integration + polish |
-| W7 | Deploy Vercel/Render + Langfuse + bug fixing | QA, UX polish, demo prep |
-| W8 | Buffer / stretch goals | Buffer / stretch goals |
+|------|----------------|---------------------|
+| W1 | Supabase schema (incl. experiment_runs) + RLS + FastAPI skeleton | Next.js auth skeleton + routing |
+| W2 | Tử Vi engine verify + unit tests + ExperimentConfig schema | Bát Tự API route + chart page shell |
+| W3 | Ingestion pipeline v1 + strategy A (default) + 1–2 sách đầu tiên | D3/SVG visualizer v1 + chat UI |
+| W4 | Neo4j graph + vector + fulltext indexing + AblationRunner skeleton | Dashboard + chart detail integration |
+| W5 | LangGraph với ExperimentConfig toggle + query rewrite + rerank | Citation UI + loading/error states |
+| W6 | Ablation run v1 (retrieval paths + reranker) + chunking strategy comparison | End-to-end integration + polish |
+| W7 | Ablation run v2 (generation model + prompt template) + chọn config production | QA, UX polish, demo prep |
+| W8 | Buffer: mở rộng corpus, thêm experiment nếu kịp | Buffer / stretch goals |
 
 ### 25.3 Scope rule để giữ timeline
 
 Nếu cần giữ đúng 7–8 tuần, bắt buộc:
 
 - chỉ ingest 3–4 sách quan trọng ban đầu,
-- chưa bật LLM document grading,
+- chưa bật LLM document grading trong production,
 - chưa tối ưu cross-domain reasoning,
-- ưu tiên chất lượng retrieval cho các câu hỏi thường gặp nhất.
+- ưu tiên chất lượng retrieval cho các câu hỏi thường gặp nhất,
+- **ablation được giới hạn trong danh sách experiment matrix đã định**, không tự do thêm mới vô hạn trong sprint.
 
 ***
 
@@ -1054,10 +1144,11 @@ FRONTEND (Vercel)
 BACKEND (Render)
   FastAPI (Python 3.11)
   doanguyen/lasotuvi (Tử Vi engine)
-  LangGraph (Hybrid GraphRAG orchestration)
+  LangGraph (Hybrid GraphRAG orchestration + ExperimentConfig-aware)
   google-generativeai SDK
   neo4j Python driver
   reranker component
+  AblationRunner (offline, chạy trên Kaggle)
 
 DATABASES
   Neo4j AuraDB Free
@@ -1065,41 +1156,11 @@ DATABASES
     - Vector index
     - Fulltext/BM25 index
     - Domain metadata (TUVI / BATU / SHARED)
+    - Chunk nodes có chunk_strategy_id
 
   Supabase PostgreSQL
     - profiles
     - la_so
     - chat_sessions
-    - source_chunks
-
-LLM / EMBEDDING
-  Gemini 2.5 Flash
-  Gemini Flash-Lite
-  gemini-embedding-001
-
-OBSERVABILITY
-  Langfuse
-```
-
-***
-
-## 27. Official implementation decisions for v5
-
-1. Dùng **một graph database duy nhất**, không tách riêng Tử Vi và Bát Tự thành hai DB ở MVP.
-2. Retrieval chính thức là **graph path + hybrid path song song**, không phải tuần tự đơn giản.
-3. Hybrid path gồm **dense + sparse/BM25**.
-4. Bật **query rewrite nhẹ** bằng Flash-Lite.
-5. Bật **reranker** ở MVP.
-6. **Không bắt buộc** LLM document grading ở MVP.
-7. Dùng **structure-first recursive chunking + parent-child retrieval**.
-8. Enforce **one chart = one chat** ở cấp DB bằng `UNIQUE (la_so_id)`.
-9. Dùng **rolling history + summary** cho chat context.
-10. Giữ scope MVP trong **7–8 tuần** bằng cách giới hạn corpus ban đầu và tránh các thành phần chưa thật sự cần thiết.
-
-***
-
-## 28. Conclusion
-
-v5 là phiên bản đặc tả chính thức cho giai đoạn MVP của hệ thống hỏi đáp Tử Vi / Bát Tự. Tài liệu này phản ánh kiến trúc đã được làm rõ qua quá trình review: chart-centric, one-chart-one-chat, soft-separated domains, hybrid graph retrieval, chunking phù hợp với domain, và roadmap thực tế hơn cho team 4 người.
-
-Phiên bản này đủ để dùng làm tài liệu triển khai chính thức cho team development, đồng thời vẫn giữ dư địa mở rộng hậu MVP khi cần tăng corpus, thêm document grading, hoặc nâng cấp hạ tầng.
+    - source_chunks (có chunk_strategy_id)
+    - experiment_runs
