@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 neo4j
 pydantic
+pydantic-settings
 pytest
 requests
 supabase
