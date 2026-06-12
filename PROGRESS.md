@@ -18,7 +18,7 @@
 ## ✓ Week 2 Completed Tasks (Partial)
 
 ### W2-ENGINE-01: Tích hợp Tử Vi Engine ✓ COMPLETE
-- **Dependencies**: Added `lasotuvi` and `pyvnlunar` to requirements.txt
+- **Dependencies**: Added `lasotuvi` and `vnlunar` to requirements.txt
 - **Service Layer**: Created `app/services/tuvi_calculator.py`
   - `TuViCalculator` class with normalized output schema
   - Error handling: `InvalidDateError`, `CalculationError`
